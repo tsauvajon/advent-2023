@@ -50,7 +50,16 @@ impl Bag {
             }
         }
 
-        return true;
+        true
+    }
+
+    pub(crate) fn get_power(&self) -> u64 {
+        self.dice
+            .values()
+            .filter(|&count| count.gt(&0))
+            .fold(1u64, |acc, &dice_count| {
+                acc.checked_mul(dice_count).unwrap_or(0)
+            })
     }
 }
 
@@ -117,6 +126,59 @@ mod bag_tests {
 
         assert!(bag.can_contain(&BagBuilder::new().with_dice(Color::Red, 9).build()));
     }
+
+    #[test]
+    fn can_calculate_power() {
+        let bag = BagBuilder::new()
+            .with_dice(Color::Red, 12)
+            .with_dice(Color::Green, 13)
+            .with_dice(Color::Blue, 14)
+            .build();
+
+        assert_eq!(12 * 13 * 14, bag.get_power());
+
+        let bag = BagBuilder::new()
+            .with_dice(Color::Red, 12)
+            .with_dice(Color::Green, 0)
+            .with_dice(Color::Blue, 14)
+            .build();
+
+        assert_eq!(12 * 14, bag.get_power());
+    }
+
+    mod get_power {
+        use super::*;
+
+        #[test]
+        fn filters_out_zeroes() {
+            let bag = BagBuilder::new()
+                .with_dice(Color::Red, 12)
+                .with_dice(Color::Green, 0)
+                .with_dice(Color::Blue, 14)
+                .build();
+
+            assert_eq!(12 * 14, bag.get_power());
+        }
+
+        #[test]
+        fn returns_zero_on_overflow() {
+            let bag = BagBuilder::new()
+                .with_dice(Color::Blue, 14)
+                .with_dice(Color::Green, 2)
+                .with_dice(Color::Red, u64::MAX)
+                .build();
+
+            assert_eq!(0, bag.get_power());
+
+            let bag = BagBuilder::new()
+                .with_dice(Color::Blue, u64::MAX)
+                .with_dice(Color::Red, 14)
+                .with_dice(Color::Green, 2)
+                .build();
+
+            assert_eq!(0, bag.get_power());
+        }
+    }
 }
 
 #[derive(Default)]
@@ -130,7 +192,10 @@ impl BagBuilder {
     }
 
     pub(crate) fn with_dice(mut self, color: Color, count: Count) -> Self {
-        self.dice.insert(color, count);
+        let old_count = self.dice.get(&color).unwrap_or(&0);
+        if count.gt(old_count) {
+            self.dice.insert(color, count);
+        }
         self
     }
 
@@ -185,11 +250,22 @@ fn builds_a_bag_from_other_bags() {
 }
 
 #[test]
-fn ignores_previous_color_count() {
+fn increases_count_if_already_present() {
     let built = BagBuilder::new()
         .with_dice(Color::Red, 12)
         .with_dice(Color::Red, 13)
         .with_dice(Color::Red, 14)
+        .build();
+
+    assert_eq!(built.dice, HashMap::from([(Color::Red, 14)]))
+}
+
+#[test]
+fn does_not_decrease_count() {
+    let built = BagBuilder::new()
+        .with_dice(Color::Red, 14)
+        .with_dice(Color::Red, 12)
+        .with_dice(Color::Red, 13)
         .build();
 
     assert_eq!(built.dice, HashMap::from([(Color::Red, 14)]))
@@ -227,6 +303,14 @@ impl Game {
         }
 
         true
+    }
+
+    pub(crate) fn get_requirements(&self) -> Bag {
+        let mut requirements = BagBuilder::new();
+        for set in &self.sets {
+            requirements = requirements.with_bag(set);
+        }
+        requirements.build()
     }
 }
 
@@ -270,5 +354,30 @@ mod tests {
     #[test]
     fn game1_fits_in_bag() {
         assert!(game1().fits_in(&bag()));
+    }
+
+    #[test]
+    fn calculates_requirements() {
+        let sets = vec![
+            BagBuilder::new()
+                .with_dice(Color::Blue, 3)
+                .with_dice(Color::Red, 4)
+                .build(),
+            BagBuilder::new()
+                .with_dice(Color::Red, 1)
+                .with_dice(Color::Green, 2)
+                .with_dice(Color::Blue, 6)
+                .build(),
+            BagBuilder::new().with_dice(Color::Green, 2).build(),
+        ];
+        let game_1 = Game::new(sets);
+        let requirements = game_1.get_requirements();
+
+        let want = BagBuilder::new()
+            .with_dice(Color::Red, 4)
+            .with_dice(Color::Green, 2)
+            .with_dice(Color::Blue, 6)
+            .build();
+        assert_eq!(want, requirements);
     }
 }

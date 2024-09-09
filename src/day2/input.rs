@@ -10,6 +10,10 @@ impl NumberedGame {
     pub(crate) fn is_possible_for(&self, bag: &Bag) -> bool {
         self.game.fits_in(bag)
     }
+
+    pub(crate) fn get_requirements(&self) -> Bag {
+        self.game.get_requirements()
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -213,7 +217,7 @@ mod parse_title_tests {
 }
 
 fn parse_die(raw: &str) -> Result<Bag, Error> {
-    let mut parts = raw.trim().split_whitespace();
+    let mut parts = raw.split_whitespace();
     let Some(count) = parts.next() else {
         return Err(Error::BadlyFormattedDie);
     };
